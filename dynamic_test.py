@@ -428,7 +428,7 @@ class DynamicalTest(unittest.TestCase):
         def complex_expression(x):
             return x**2 + 0.7885*np.e**(1j * 2.9)
         
-        plot_julia_set(complex_expression, 100, 4000000, -1, 1, -1, 1, 'CMRmap')
+        plot_julia_set(complex_expression, 10, 4000000, -1, 1, -1, 1, 'CMRmap')
         # plt.show()
         plt.savefig('juliaset27.png')
         
@@ -508,14 +508,15 @@ def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: i
         else:
             return np.NaN
     filter_out = np.vectorize(filter_helper, otypes=[np.complex64])
-    filtered_list = filter_out(complex_random_set, divergence)
+    divergence2 = divergence.get()
+    filtered_list = filter_out(complex_random_set, divergence2)
 
     cleaned_list = []
     cleaned_divergence = []
     isnan_list = np.isnan(filtered_list)
     for index in range(len(filtered_list)):
         if not isnan_list[index]:
-            cleaned_divergence.append(divergence[index])
+            cleaned_divergence.append(divergence2[index])
             cleaned_list.append(filtered_list[index])
     cleaned_list = np.array(cleaned_list)
     cleaned_divergence = np.array(cleaned_divergence)

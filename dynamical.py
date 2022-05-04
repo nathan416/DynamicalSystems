@@ -116,31 +116,57 @@ def iterations_till_divergence(iterating_function: callable, initial_values: np.
         list: list of when each value diverges
     """
     iterating_values = initial_values
-    divergence = np.zeros(len(iterating_values))
+    divergence = cp.zeros(len(iterating_values), dtype=cp.int32)
 
-    def helper_func(iterating_value, divergence):
-        if iterating_value.real**2 + iterating_value.imag**2 < 4:
+    @cp.fuse(kernel_name='helper_func')
+    def helper_func(real, imag, divergence):
+        if real**2 + imag**2 < 4:
             return divergence + 1
         else:
             return divergence
-
-    def helper_func2(iterating_value):
-        if iterating_value.real**2 + iterating_value.imag**2 >= 4:
-            iterating_value = np.NaN
-        return iterating_value
-    helper = np.vectorize(helper_func, otypes=[np.int16])
-    helper2 = np.vectorize(helper_func2, otypes=[np.complex64])
+    
+    helper_func3 = cp.ElementwiseKernel(
+    'complex64 x, int32 d',
+    'int32 z',
+    '''
+    if (x*x + y*y < 4) {
+        z = d + 1;
+    }
+    ''',
+    'helper_func3')
+    
+    @cp.fuse(kernel_name='helper_func2')
+    def helper_func2(real, imag):
+        if real**2 + imag**2 >= 4:
+            return np.NaN
+        return real + imag*1j
+    
+    helper_func4 = cp.ElementwiseKernel(
+    'float32 x, float32 y, int32 d',
+    'int32 z',
+    '''
+    if (x*x + y*y >= 4) {
+        z = NAN;
+    }
+    else { 
+        z = x + y * I
+    }
+    ''',
+    'helper_func4')
+    
+    # helper = cp.vectorize(helper_func, otypes=[cp.int16])
+    # helper2 = np.vectorize(helper_func2, otypes=[np.complex64])
 
     for iteration in tqdm(range(iteration_count)):
-        # start_time = time.perf_counter()
+        start_time = time.perf_counter()
         iterating_values = iterating_function(iterating_values)
-        # LOGGER.info(f'iterating function time: {time.perf_counter() - start_time}')
-        # start_time = time.perf_counter()
-        divergence = helper(iterating_values, divergence)
-        # LOGGER.info(f'helper function time: {time.perf_counter() - start_time}')
-        # start_time = time.perf_counter()
-        iterating_values = helper2(iterating_values)
-        # LOGGER.info(f'helper2 function time: {time.perf_counter() - start_time}')
+        LOGGER.info(f'iterating function time: {time.perf_counter() - start_time}')
+        start_time = time.perf_counter()
+        divergence = helper_func(iterating_values.real, iterating_values.imag, divergence)
+        LOGGER.info(f'helper function time: {time.perf_counter() - start_time}')
+        start_time = time.perf_counter()
+        iterating_values = helper_func2(iterating_values.real, iterating_values.imag)
+        LOGGER.info(f'helper2 function time: {time.perf_counter() - start_time}')
     return divergence
 
 
