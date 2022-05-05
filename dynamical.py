@@ -12,7 +12,7 @@ import time
 from functools import partial
 from astropy.visualization import LogStretch
 from astropy.visualization.mpl_normalize import ImageNormalize
-from numba import vectorize, jit, njit
+from numba import vectorize, jit, njit, cuda
 
 import matplotlib.pyplot as plt
 import mpl_scatter_density
@@ -103,27 +103,40 @@ def iterate_array_expression(iterating_function: callable, initial_values: np.nd
     return iterating_values
 
 
-def iterations_till_divergence(expression: callable, initial_values: np.ndarray, iteration_count=1000) -> list:
+def iterations_till_divergence(expression: callable, initial_values: np.ndarray, iteration_count=1000, comp_method='cpu') -> list:
     """ iterates over a function with the initial value and returns
         a list of when each value diverges
 
     Args:
-        expression (numpy.NDArray): function of x to be iterated
+        expression (ufunc): function of x to be iterated
         initial_values (numpy.NDArray): array of initial values
         max_iterations (int): amount of iterations
 
     Returns:
         list: list of when each value diverges
     """
-    iterating_values = initial_values
-    divergence = np.zeros(len(iterating_values), dtype=cp.int32)
+    iterating_values_h = initial_values
+    divergence_h = np.zeros(len(iterating_values_h), dtype=np.int32)
 
     # @cp.fuse(kernel_name='helper_func')
     def helper_func(complex_value, divergence):
-        if complex_value.real**2 + complex_value.imag**2 < 4:
-            return divergence + 1
-        else:
+        try:
+            if complex_value.real**2 + complex_value.imag**2 < 4:
+                return divergence + 1
+            else:
+                return divergence
+        except OverflowError:
             return divergence
+    
+    @cuda.jit('void(complex128[:], int32[:])')
+    def helper_func5(complex_value, divergence):
+        # if complex_value[i].real**2 + complex_value[i].imag**2 < 4:
+        #     divergence[i] = divergence[i] + 1
+        start = cuda.grid(1)
+        stride = cuda.gridsize(1)
+        for i in range(start, complex_value.shape[0], stride): 
+            if complex_value[i].real**2 + complex_value[i].imag**2 < 4:
+                divergence[i] = divergence[i] + 1
     
     helper_func3 = cp.ElementwiseKernel(
     'float64 x, float64 y, int32 d',
@@ -140,10 +153,13 @@ def iterations_till_divergence(expression: callable, initial_values: np.ndarray,
     
     # @cp.fuse(kernel_name='helper_func2')
     def helper_func2(complex_value):
-        if complex_value.real**2 + complex_value.imag**2 >= 4:
+        try:
+            if complex_value.real**2 + complex_value.imag**2 >= 4:
+                return np.NaN
+            else:
+                return complex_value
+        except OverflowError:
             return np.NaN
-        else:
-            return complex_value
     
     helper_func4 = cp.ElementwiseKernel(
     'complex128 x',
@@ -161,18 +177,22 @@ def iterations_till_divergence(expression: callable, initial_values: np.ndarray,
     
     helper = np.vectorize(helper_func, otypes=[np.int16])
     helper2 = np.vectorize(helper_func2, otypes=[np.complex128])
-
+    griddim = 64
+    blockdim = 64
+    if comp_method == 'gpu':
+        iterating_values_d = cuda.to_device(iterating_values_h)
+        divergence_d = cuda.to_device(divergence_h)
     for iteration in tqdm(range(iteration_count)):
-        # start_time = time.perf_counter()
-        iterating_values = expression(iterating_values)
-        # LOGGER.info(f'iterating function time: {time.perf_counter() - start_time}')
-        # start_time = time.perf_counter()
-        divergence = helper(iterating_values, divergence)
-        # LOGGER.info(f'helper function time: {time.perf_counter() - start_time}')
-        # start_time = time.perf_counter()
-        iterating_values = helper2(iterating_values)
-        # LOGGER.info(f'helper2 function time: {time.perf_counter() - start_time}')
-    return divergence
+        if comp_method == 'gpu':
+            expression[griddim, blockdim](iterating_values_d)
+            helper_func5[griddim, blockdim](iterating_values_d, divergence_d)
+        else:
+            iterating_values_h = expression(iterating_values_h)
+            divergence_h = helper(iterating_values_h, divergence_h)
+        # iterating_values = helper2(iterating_values)
+    if comp_method == 'gpu':
+        divergence_h = divergence_d.copy_to_host()
+    return divergence_h
 
 
 def iterate_expression(expression, value: float, precision: int, max_iterations=10000):

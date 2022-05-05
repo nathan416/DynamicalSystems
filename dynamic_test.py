@@ -15,6 +15,7 @@ import time
 import unittest
 
 import cupy as cp
+from numba import cuda
 import matplotlib.pyplot as plt
 import mpl_scatter_density
 import mpld3
@@ -426,19 +427,28 @@ class DynamicalTest(unittest.TestCase):
     
     def test_julia_set_plot(self):
         def complex_expression2(x):
-            return x**3 + 0.7885*np.e**(1j * 2.9)
-        
+            try:
+                return x**2 - 0.4 + 0.6j
+            except OverflowError:
+                return np.inf
+            
+        @cuda.jit('void(complex128[:])')
         def complex_expression(x):
-            return x**3 - .6 + .4j
+            # i = cuda.grid(1)
+            # x[i] = x[i]**2 - 0.4 + 0.6j
+            start = cuda.grid(1)
+            stride = cuda.gridsize(1)
+            for i in range(start, x.shape[0], stride): 
+                x[i] = x[i]**6 - 0.7 + 1.755j
         expression = cp.ElementwiseKernel(
         'complex128 x',
         'complex128 z',
         'z = x*x + .4 - .6*i;',
         'expression')
         
-        plot_julia_set(complex_expression, 100, 4000000, -1, 1, -1, 1, 'CMRmap')
-        # plt.show()
-        plt.savefig('juliaset28.png')
+        plot_julia_set(complex_expression, 300, 5000000, -2.0444, 2.0444, -1.2, 1.1, 'CMRmap', 'gpu')
+        plt.show()
+        # plt.savefig('juliaset35.png')
         
     def test_julia_set_root_plot(self):
         complex_expression = x**4 - .4 + 6j
@@ -448,8 +458,8 @@ class DynamicalTest(unittest.TestCase):
         
         plot_julia_root_set(complex_expression, derivative_expression, 100, 5000000, -1.5, 1.5, -1.5, 1.5, 'Set1')
         
-        # plt.show()
-        plt.savefig('juliaset24.png')
+        plt.show()
+        # plt.savefig('juliaset24.png')
 
 
     def test_complex_fixed_point(self):
@@ -484,7 +494,7 @@ def plot_contour(x, y, z, resolution=50, contour_method='linear'):
     return aX, aY, aZ
 
 
-def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: int=20000, real_range_min: float=-1.0, real_range_max: float=1.0, imag_range_min: float=-1.0, imag_range_max: float=1.0, cmap='viridis'):
+def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: int=20000, real_range_min: float=-1.0, real_range_max: float=1.0, imag_range_min: float=-1.0, imag_range_max: float=1.0, cmap='viridis', comp_method='cpu', image_width=19.2, image_height=10.8):
     """ takes complex expression, iterates the expression with a random set of initial complex points
         and returns the times it was iterated before the value diverged.
         removes values that have a large magnitude. plots the remaining points on a complex plane.
@@ -502,21 +512,23 @@ def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: i
     Returns:
         _type_: _description_
     """
-
-    complex_function = np.vectorize(expression)
+    if comp_method == 'cpu':
+        complex_function = np.vectorize(expression)
+    elif comp_method == 'gpu':
+        complex_function = expression
     
     real_random_set = np.array(random.sample(sorted(np.linspace(real_range_min, real_range_max, 20000000)), seed_count))
     imag_random_set = np.array(random.sample(sorted(np.linspace(imag_range_min, imag_range_max, 20000000)), seed_count))
     complex_random_set = real_random_set + imag_random_set * 1j
 
-    divergence = iterations_till_divergence(complex_function, complex_random_set, iteration_count)
+    divergence = iterations_till_divergence(complex_function, np.array(complex_random_set), iteration_count, comp_method)
     
     def filter_helper(complex_value, divergence):
         if divergence < iteration_count:
             return complex_value
         else:
             return np.NaN
-    filter_out = np.vectorize(filter_helper, otypes=[np.complex64])
+    filter_out = np.vectorize(filter_helper, otypes=[np.complex128])
     # divergence2 = divergence.get()
     # complex_random_set2 = complex_random_set.get()
     filtered_list = filter_out(complex_random_set, divergence)
@@ -532,10 +544,10 @@ def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: i
     cleaned_divergence = np.array(cleaned_divergence)
     
     fig, ax = plt.subplots(num=f'Julia set plot')
-    fig.set_size_inches(20, 20)
-    plt.tight_layout()
+    fig.set_size_inches(image_width, image_height)
     ax.axis('equal')
-    ax.scatter(cleaned_list.real, cleaned_list.imag, c=cleaned_divergence, s=.1, cmap=cmap,  marker='s')
+    ax.scatter(cleaned_list.real, cleaned_list.imag, c=cleaned_divergence, s=.1, cmap=cmap)
+    plt.tight_layout()
     
 def plot_julia_root_set(expression: callable, derivative: callable, iteration_count: int=100, seed_count: int=20000, real_range_min: float=-1.0, real_range_max: float=1.0, imag_range_min: float=-1.0, imag_range_max: float=1.0, cmap='viridis'):
     """ takes complex expression, iterates the expression with the newtons method 
