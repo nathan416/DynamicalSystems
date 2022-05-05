@@ -182,7 +182,7 @@ def iterations_till_divergence(expression: callable, initial_values: np.ndarray,
     if comp_method == 'gpu':
         iterating_values_d = cuda.to_device(iterating_values_h)
         divergence_d = cuda.to_device(divergence_h)
-    for iteration in tqdm(range(iteration_count)):
+    for iteration in range(iteration_count):
         if comp_method == 'gpu':
             expression[griddim, blockdim](iterating_values_d)
             helper_func5[griddim, blockdim](iterating_values_d, divergence_d)

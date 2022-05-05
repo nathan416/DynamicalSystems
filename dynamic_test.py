@@ -5,6 +5,7 @@
 """
 from __future__ import division
 
+from PIL import Image
 import logging
 import multiprocessing
 import os
@@ -17,6 +18,7 @@ import unittest
 import cupy as cp
 from numba import cuda
 import matplotlib.pyplot as plt
+import matplotlib
 import mpl_scatter_density
 import mpld3
 import numpy as np
@@ -37,6 +39,7 @@ k, m, n = symbols('k m n', integer=True)
 f, g, h = symbols('f g h', cls=Function)
 
 
+
 class DynamicalTest(unittest.TestCase):
     """Test class for dynamical.py
     """
@@ -46,6 +49,7 @@ class DynamicalTest(unittest.TestCase):
                             format=LOG_FORMAT, filename='log_file_test.log')
         logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
         logging.getLogger('numba.core').setLevel(logging.WARNING)
+        matplotlib.use('Agg')
 
     def test_liopanuv(self):
         SUB_INTERVALS = 1000
@@ -439,19 +443,33 @@ class DynamicalTest(unittest.TestCase):
             start = cuda.grid(1)
             stride = cuda.gridsize(1)
             for i in range(start, x.shape[0], stride): 
-                x[i] = x[i]**6 - 0.7 + 1.755j
+                x[i] = 1 - x[i]**2 + x[i]**5/(2 + 4*x[i]) - 0.14643 + 0.11301j
         expression = cp.ElementwiseKernel(
         'complex128 x',
         'complex128 z',
         'z = x*x + .4 - .6*i;',
         'expression')
         
-        plot_julia_set(complex_expression, 300, 5000000, -2.0444, 2.0444, -1.2, 1.1, 'CMRmap', 'gpu')
-        plt.show()
-        # plt.savefig('juliaset35.png')
+        plot_julia_set(complex_expression, 100, 4000000, -2.133, 2.133, -1.2, 1.2, 'CMRmap', 'gpu')
+        # plt.show()
+        plt.savefig('juliaset41.png')
+        
+    def test_plot_julia_set_over_time(self):
+        for a in tqdm(np.linspace(0, 2*np.pi, 200)):
+            @cuda.jit('void(complex128[:])')
+            def complex_expression(x):
+                # i = cuda.grid(1)
+                # x[i] = x[i]**2 - 0.4 + 0.6j
+                start = cuda.grid(1)
+                stride = cuda.gridsize(1)
+                for i in range(start, x.shape[0], stride): 
+                    x[i] = 1 - x[i]**3 + x[i]**6/(2 + 4*x[i]) + 0.7885* np.e**(a*1j)
+            plot_julia_set(complex_expression, 100, 3000000, -2.133, 2.133, -1.2, 1.2, 'CMRmap', 'gpu')
+            plt.savefig(f'pictures/juliasetovertime{len(os.listdir(os.path.join(os.getcwd(), "pictures")))}.png')
+            plt.clf()
         
     def test_julia_set_root_plot(self):
-        complex_expression = x**4 - .4 + 6j
+        complex_expression = x**4 - .45 + 6j
         derivative_expression = diff(complex_expression, x)
         complex_expression = lambdify(x, complex_expression)
         derivative_expression = lambdify(x, derivative_expression)
@@ -546,8 +564,8 @@ def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: i
     fig, ax = plt.subplots(num=f'Julia set plot')
     fig.set_size_inches(image_width, image_height)
     ax.axis('equal')
-    ax.scatter(cleaned_list.real, cleaned_list.imag, c=cleaned_divergence, s=.1, cmap=cmap)
     plt.tight_layout()
+    ax.scatter(cleaned_list.real, cleaned_list.imag, c=cleaned_divergence, s=.1, cmap=cmap)
     
 def plot_julia_root_set(expression: callable, derivative: callable, iteration_count: int=100, seed_count: int=20000, real_range_min: float=-1.0, real_range_max: float=1.0, imag_range_min: float=-1.0, imag_range_max: float=1.0, cmap='viridis'):
     """ takes complex expression, iterates the expression with the newtons method 
@@ -613,7 +631,7 @@ def main():
     logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
     logging.getLogger('numba.core').setLevel(logging.WARNING)
     test_client = DynamicalTest()
-    test_client.test_julia_set_plot()
+    test_client.test_plot_julia_set_over_time()
 
 
 if __name__ == '__main__':

@@ -129,3 +129,5 @@ dmypy.json
 .pyre/
 
 *.png
+pictures/png_to_gif.py
+pictures/julia_over_time.gif
