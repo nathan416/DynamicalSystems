@@ -425,12 +425,20 @@ class DynamicalTest(unittest.TestCase):
         # plt.savefig('juliaset14.png')
     
     def test_julia_set_plot(self):
-        def complex_expression(x):
-            return x**2 + 0.7885*np.e**(1j * 2.9)
+        def complex_expression2(x):
+            return x**3 + 0.7885*np.e**(1j * 2.9)
         
-        plot_julia_set(complex_expression, 10, 4000000, -1, 1, -1, 1, 'CMRmap')
+        def complex_expression(x):
+            return x**3 - .6 + .4j
+        expression = cp.ElementwiseKernel(
+        'complex128 x',
+        'complex128 z',
+        'z = x*x + .4 - .6*i;',
+        'expression')
+        
+        plot_julia_set(complex_expression, 100, 4000000, -1, 1, -1, 1, 'CMRmap')
         # plt.show()
-        plt.savefig('juliaset27.png')
+        plt.savefig('juliaset28.png')
         
     def test_julia_set_root_plot(self):
         complex_expression = x**4 - .4 + 6j
@@ -496,6 +504,7 @@ def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: i
     """
 
     complex_function = np.vectorize(expression)
+    
     real_random_set = np.array(random.sample(sorted(np.linspace(real_range_min, real_range_max, 20000000)), seed_count))
     imag_random_set = np.array(random.sample(sorted(np.linspace(imag_range_min, imag_range_max, 20000000)), seed_count))
     complex_random_set = real_random_set + imag_random_set * 1j
@@ -508,15 +517,16 @@ def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: i
         else:
             return np.NaN
     filter_out = np.vectorize(filter_helper, otypes=[np.complex64])
-    divergence2 = divergence.get()
-    filtered_list = filter_out(complex_random_set, divergence2)
+    # divergence2 = divergence.get()
+    # complex_random_set2 = complex_random_set.get()
+    filtered_list = filter_out(complex_random_set, divergence)
 
     cleaned_list = []
     cleaned_divergence = []
     isnan_list = np.isnan(filtered_list)
     for index in range(len(filtered_list)):
         if not isnan_list[index]:
-            cleaned_divergence.append(divergence2[index])
+            cleaned_divergence.append(divergence[index])
             cleaned_list.append(filtered_list[index])
     cleaned_list = np.array(cleaned_list)
     cleaned_divergence = np.array(cleaned_divergence)

@@ -103,7 +103,7 @@ def iterate_array_expression(iterating_function: callable, initial_values: np.nd
     return iterating_values
 
 
-def iterations_till_divergence(iterating_function: callable, initial_values: np.ndarray, iteration_count=1000) -> list:
+def iterations_till_divergence(expression: callable, initial_values: np.ndarray, iteration_count=1000) -> list:
     """ iterates over a function with the initial value and returns
         a list of when each value diverges
 
@@ -116,57 +116,62 @@ def iterations_till_divergence(iterating_function: callable, initial_values: np.
         list: list of when each value diverges
     """
     iterating_values = initial_values
-    divergence = cp.zeros(len(iterating_values), dtype=cp.int32)
+    divergence = np.zeros(len(iterating_values), dtype=cp.int32)
 
-    @cp.fuse(kernel_name='helper_func')
-    def helper_func(real, imag, divergence):
-        if real**2 + imag**2 < 4:
+    # @cp.fuse(kernel_name='helper_func')
+    def helper_func(complex_value, divergence):
+        if complex_value.real**2 + complex_value.imag**2 < 4:
             return divergence + 1
         else:
             return divergence
     
     helper_func3 = cp.ElementwiseKernel(
-    'complex64 x, int32 d',
+    'float64 x, float64 y, int32 d',
     'int32 z',
     '''
     if (x*x + y*y < 4) {
         z = d + 1;
     }
+    else{
+        z = d;
+    }
     ''',
     'helper_func3')
     
-    @cp.fuse(kernel_name='helper_func2')
-    def helper_func2(real, imag):
-        if real**2 + imag**2 >= 4:
+    # @cp.fuse(kernel_name='helper_func2')
+    def helper_func2(complex_value):
+        if complex_value.real**2 + complex_value.imag**2 >= 4:
             return np.NaN
-        return real + imag*1j
+        else:
+            return complex_value
     
     helper_func4 = cp.ElementwiseKernel(
-    'float32 x, float32 y, int32 d',
-    'int32 z',
+    'complex128 x',
+    'complex128 z',
     '''
-    if (x*x + y*y >= 4) {
-        z = NAN;
+    #include <math.h>
+    if (creal(x)*creal(x) + cimag(x)*cimag(x) >= 4) {
+        z = logf(-1);
     }
     else { 
-        z = x + y * I
+        z = x;
     }
     ''',
     'helper_func4')
     
-    # helper = cp.vectorize(helper_func, otypes=[cp.int16])
-    # helper2 = np.vectorize(helper_func2, otypes=[np.complex64])
+    helper = np.vectorize(helper_func, otypes=[np.int16])
+    helper2 = np.vectorize(helper_func2, otypes=[np.complex128])
 
     for iteration in tqdm(range(iteration_count)):
-        start_time = time.perf_counter()
-        iterating_values = iterating_function(iterating_values)
-        LOGGER.info(f'iterating function time: {time.perf_counter() - start_time}')
-        start_time = time.perf_counter()
-        divergence = helper_func(iterating_values.real, iterating_values.imag, divergence)
-        LOGGER.info(f'helper function time: {time.perf_counter() - start_time}')
-        start_time = time.perf_counter()
-        iterating_values = helper_func2(iterating_values.real, iterating_values.imag)
-        LOGGER.info(f'helper2 function time: {time.perf_counter() - start_time}')
+        # start_time = time.perf_counter()
+        iterating_values = expression(iterating_values)
+        # LOGGER.info(f'iterating function time: {time.perf_counter() - start_time}')
+        # start_time = time.perf_counter()
+        divergence = helper(iterating_values, divergence)
+        # LOGGER.info(f'helper function time: {time.perf_counter() - start_time}')
+        # start_time = time.perf_counter()
+        iterating_values = helper2(iterating_values)
+        # LOGGER.info(f'helper2 function time: {time.perf_counter() - start_time}')
     return divergence
 
 
