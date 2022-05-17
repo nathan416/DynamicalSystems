@@ -13,6 +13,8 @@ from functools import partial
 from astropy.visualization import LogStretch
 from astropy.visualization.mpl_normalize import ImageNormalize
 from numba import vectorize, jit, njit, cuda
+import random
+import sys
 
 import matplotlib.pyplot as plt
 import mpl_scatter_density
@@ -103,7 +105,7 @@ def iterate_array_expression(iterating_function: callable, initial_values: np.nd
     return iterating_values
 
 
-def iterations_till_divergence(expression: callable, initial_values: np.ndarray, iteration_count=1000, comp_method='cpu') -> list:
+def iterations_till_divergence(expression: callable, initial_values: np.ndarray, a:float, iteration_count=1000, comp_method='cpu') -> list:
     """ iterates over a function with the initial value and returns
         a list of when the modulus of each complex value goes above 4
 
@@ -119,64 +121,16 @@ def iterations_till_divergence(expression: callable, initial_values: np.ndarray,
     divergence_h = np.zeros(len(iterating_values_h), dtype=np.int32)
 
     # @cp.fuse(kernel_name='helper_func')
-    def helper_func(complex_value, divergence):
-        try:
-            if complex_value.real**2 + complex_value.imag**2 < 4:
-                return divergence + 1
-            else:
-                return divergence
-        except OverflowError:
-            return divergence
+    # def helper_func(complex_value, divergence):
+    #     try:
+    #         if complex_value.real**2 + complex_value.imag**2 < 4:
+    #             return divergence + 1
+    #         else:
+    #             return divergence
+    #     except OverflowError:
+    #         return divergence
     
-    @cuda.jit('void(complex128[:], int32[:])')
-    def helper_func5(complex_value, divergence):
-        # if complex_value[i].real**2 + complex_value[i].imag**2 < 4:
-        #     divergence[i] = divergence[i] + 1
-        start = cuda.grid(1)
-        stride = cuda.gridsize(1)
-        for i in range(start, complex_value.shape[0], stride): 
-            if complex_value[i].real**2 + complex_value[i].imag**2 < 2:
-                divergence[i] = divergence[i] + 1
-    
-    helper_func3 = cp.ElementwiseKernel(
-    'float64 x, float64 y, int32 d',
-    'int32 z',
-    '''
-    if (x*x + y*y < 4) {
-        z = d + 1;
-    }
-    else{
-        z = d;
-    }
-    ''',
-    'helper_func3')
-    
-    # @cp.fuse(kernel_name='helper_func2')
-    def helper_func2(complex_value):
-        try:
-            if complex_value.real**2 + complex_value.imag**2 >= 4:
-                return np.NaN
-            else:
-                return complex_value
-        except OverflowError:
-            return np.NaN
-    
-    helper_func4 = cp.ElementwiseKernel(
-    'complex128 x',
-    'complex128 z',
-    '''
-    #include <math.h>
-    if (creal(x)*creal(x) + cimag(x)*cimag(x) >= 4) {
-        z = logf(-1);
-    }
-    else { 
-        z = x;
-    }
-    ''',
-    'helper_func4')
-    
-    helper = np.vectorize(helper_func, otypes=[np.int16])
-    helper2 = np.vectorize(helper_func2, otypes=[np.complex128])
+    # helper = np.vectorize(helper_func, otypes=[np.int32])
     griddim = 64
     blockdim = 64
     if comp_method == 'gpu':
@@ -184,7 +138,7 @@ def iterations_till_divergence(expression: callable, initial_values: np.ndarray,
         divergence_d = cuda.to_device(divergence_h)
     for iteration in tqdm(range(iteration_count)):
         if comp_method == 'gpu':
-            expression[griddim, blockdim](iterating_values_d)
+            expression[griddim, blockdim](iterating_values_d, a)
             helper_func5[griddim, blockdim](iterating_values_d, divergence_d)
         else:
             iterating_values_h = expression(iterating_values_h)
@@ -194,6 +148,15 @@ def iterations_till_divergence(expression: callable, initial_values: np.ndarray,
         divergence_h = divergence_d.copy_to_host()
     return divergence_h
 
+@cuda.jit('void(complex64[:], int32[:])')
+def helper_func5(complex_value, divergence):
+    # if complex_value[i].real**2 + complex_value[i].imag**2 < 4:
+    #     divergence[i] = divergence[i] + 1
+    start = cuda.grid(1)
+    stride = cuda.gridsize(1)
+    for i in range(start, complex_value.shape[0], stride): 
+        if complex_value[i].real**2 + complex_value[i].imag**2 < 2:
+            divergence[i] = divergence[i] + 1
 
 def iterate_expression(expression, value: float, precision: int, max_iterations=10000):
     """iterates over a function with the initial value and returns
@@ -796,6 +759,129 @@ def newtons_method(expression: Basic, initial_value: float, iterations: int) -> 
     for loop_control in range(0, iterations):
         intermediate_value = intermediate_value - (expression.subs(x, intermediate_value) / derivative.subs(x, intermediate_value))
     return intermediate_value
+
+def plot_julia_set(expression: callable, a, iteration_count: int = 100, seed_count: int = 20000, real_range_min: float = -1.0, real_range_max: float = 1.0,
+                   imag_range_min: float = -1.0, imag_range_max: float = 1.0, cmap='viridis', comp_method='cpu', image_width=19.2, image_height=10.8, fig_name='Julia set plot', is_plotted=True):
+    """ takes complex expression, iterates the expression with a random set of initial complex points
+        and returns the times it was iterated before the value diverged.
+        removes values that did not diverge. plots the remaining points on a complex plane
+        with a color matching the times needed for the modulus to go above 4.
+        This should be R^2 instead of 4 where R = escape radius; but its hard to code
+
+    Args:
+        expression (callable): julia set function
+        iteration_count (int): amount of times to iterate
+        seed_count (int): amount of points to iterate and plot
+        real_range_min (float): min range of real part of complex points
+        real_range_max (float): max range of real part of complex points
+        imag_range_min (float): min range of imag part of complex points
+        imag_range_max (float): max range of imag part of complex points
+
+    """
+    start_time = time.perf_counter()
+    if comp_method == 'cpu':
+        complex_function = np.vectorize(expression)
+    elif comp_method == 'gpu':
+        complex_function = expression
+
+    real_random_set = np.array(random.sample(sorted(np.linspace(real_range_min, real_range_max, 20000000)), seed_count))
+    imag_random_set = np.array(random.sample(sorted(np.linspace(imag_range_min, imag_range_max, 20000000)), seed_count))
+    complex_random_set = real_random_set + imag_random_set * 1j
+
+    divergence = iterations_till_divergence(complex_function, np.array(complex_random_set, dtype=np.complex64), a, iteration_count, comp_method)
+
+    cleaned_list = []
+    cleaned_divergence = []
+    
+    cleaned_list = complex_random_set
+    cleaned_divergence = divergence
+    
+    # def filter_helper(complex_value, divergence):
+    #     if divergence < iteration_count:
+    #         return complex_value
+    #     else:
+    #         return np.NaN
+    # filter_out = np.vectorize(filter_helper, otypes=[np.complex64])
+    # # divergence2 = divergence.get()
+    # # complex_random_set2 = complex_random_set.get()
+    # filtered_list = filter_out(complex_random_set, divergence)
+
+    # isnan_list = np.isnan(filtered_list)
+    # for index in range(len(filtered_list)):
+    #     if not isnan_list[index]:
+    #         cleaned_divergence.append(divergence[index])
+    #         cleaned_list.append(filtered_list[index])
+    # cleaned_list = np.array(cleaned_list)
+    # cleaned_divergence = np.array(cleaned_divergence)
+    LOGGER.info(f"size of cleaned_divergence: {sys.getsizeof(cleaned_divergence)}")
+    LOGGER.info(f"size of cleaned_list: {sys.getsizeof(cleaned_list)}")
+
+    fig, ax = plt.subplots(num=fig_name)
+    if(is_plotted):
+        fig.set_size_inches(image_width, image_height)
+        ax.axis('equal')
+        plt.tight_layout()
+        ax.scatter(cleaned_list.real, cleaned_list.imag, c=cleaned_divergence, s=.1, cmap=cmap)
+    LOGGER.info(f'time taken plot_julia_set: {time.perf_counter() - start_time}')
+    return fig, cleaned_list, cleaned_divergence
+
+
+def plot_julia_root_set(expression: callable, derivative: callable, iteration_count: int = 100, seed_count: int = 20000, real_range_min: float = -1.0, real_range_max: float = 1.0, imag_range_min: float = -1.0, imag_range_max: float = 1.0, cmap='viridis'):
+    """ takes complex expression, iterates the expression with the newtons method
+        over a random set of initial complex points
+        and returns the root at each point.
+        removes values that have a large magnitude. plots the remaining points on a complex plane.
+
+    Args:
+        expression (callable): _description_
+        iteration_count (int): _description_
+        seed_count (int): _description_
+        real_range_min (float): _description_
+        real_range_max (float): _description_
+        imag_range_min (float): _description_
+        imag_range_max (float): _description_
+
+    Returns:
+        _type_: _description_
+    """
+
+    real_random_set = np.array(random.sample(sorted(np.linspace(real_range_min, real_range_max, 20000000)), seed_count))
+    imag_random_set = np.array(random.sample(sorted(np.linspace(imag_range_min, imag_range_max, 20000000)), seed_count))
+    complex_random_set = real_random_set + imag_random_set * 1j
+
+    root_list = find_roots(expression, derivative, complex_random_set, iteration_count)
+    LOGGER.info(root_list[:20])
+
+    # cleaned_roots = []
+    # isnan_list = np.isnan(root_list)
+    # for index in range(len(root_list)):
+    #     if not isnan_list[index]:
+    #         cleaned_roots.append(root_list[index])
+    # cleaned_roots = np.array(cleaned_roots)
+
+    fig, ax = plt.subplots(num=f'Julia set root plot')
+    fig.set_size_inches(20, 20)
+    plt.tight_layout()
+    ax.axis('equal')
+    ax.scatter(complex_random_set.real, complex_random_set.imag, c=root_list.imag, s=.1, cmap=cmap)
+
+
+def find_roots(iterating_function: callable, derivative: callable, initial_values: np.ndarray, iteration_count=1000) -> list:
+    """ finds roots with newtons method
+
+    Args:
+        expression (numpy.NDArray): function of x to be iterated
+        initial_values (numpy.NDArray): array of initial values
+        max_iterations (int): amount of iterations
+
+    Returns:
+        list: list of when each value diverges
+    """
+    root_list = initial_values
+
+    for i in tqdm(range(iteration_count)):
+        root_list = root_list - (iterating_function(root_list) / derivative(root_list))
+    return root_list
 
 
 def main():
