@@ -14,6 +14,7 @@ import random
 import sys
 import time
 import unittest
+import threading
 
 import cupy as cp
 from numba import cuda
@@ -25,7 +26,7 @@ import numpy as np
 from scipy.interpolate import griddata
 from sympy import *
 from tqdm import tqdm
-
+from tqdm.contrib.concurrent import process_map
 from dynamical import *
 
 SEED = 100
@@ -38,6 +39,7 @@ x, y, z, t = symbols('x y z t')
 k, m, n = symbols('k m n', integer=True)
 f, g, h = symbols('f g h', cls=Function)
 
+thread_lock = threading.Lock()
 
 
 class DynamicalTest(unittest.TestCase):
@@ -49,6 +51,7 @@ class DynamicalTest(unittest.TestCase):
                             format=LOG_FORMAT, filename='log_file_test.log')
         logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
         logging.getLogger('numba.core').setLevel(logging.WARNING)
+        logging.getLogger('numba.cuda.cudadrv.driver').setLevel(logging.WARNING)
         matplotlib.use('Agg')
 
     def test_liopanuv(self):
@@ -107,8 +110,8 @@ class DynamicalTest(unittest.TestCase):
         plt.show()
 
     def test_complex_iteration(self):
-        complex_expression = x**2 - 1 + 1 * I
-        graph_list = full_iterate_expression(complex_expression, np.array([-1 + 1j]), 10000, 10000)
+        complex_expression = x**2 - .5 + .3j
+        graph_list = full_iterate_expression(complex_expression, np.array([-1 - 1j]), 10, 10)
         real_list = np.array([])
         imag_list = np.array([])
         for value in graph_list:
@@ -119,7 +122,7 @@ class DynamicalTest(unittest.TestCase):
         # ax.plot(real_list, imag_list)
         plt.xlim(min(real_list), max(real_list))
         plt.ylim(min(imag_list), max(imag_list))
-        LOGGER.info(pp.pformat(graph_list[-10:]))
+        LOGGER.info(pp.pformat(graph_list[-100:]))
         LOGGER.info(pp.pformat(graph_list[:10]))
         LOGGER.info(f'real min: {min(real_list)}')
         LOGGER.info(f'real max: {max(real_list)}')
@@ -428,57 +431,112 @@ class DynamicalTest(unittest.TestCase):
         ax.scatter(cleaned_list.real, cleaned_list.imag, c=cleaned_divergence, s=1, cmap='YlGnBu_r')
         plt.show()
         # plt.savefig('juliaset14.png')
-    
+
     def test_julia_set_plot(self):
+        start_time = time.perf_counter()
+
         def complex_expression2(x):
             try:
                 return x**2 - 0.4 + 0.6j
             except OverflowError:
                 return np.inf
-            
+
         @cuda.jit('void(complex128[:])')
         def complex_expression(x):
             # i = cuda.grid(1)
             # x[i] = x[i]**2 - 0.4 + 0.6j
             start = cuda.grid(1)
             stride = cuda.gridsize(1)
-            for i in range(start, x.shape[0], stride): 
-                x[i] = 1 - x[i]**2 + x[i]**5/(2 + 4*x[i]) - 0.14643 + 0.11301j
+            for i in range(start, x.shape[0], stride):
+                x[i] = 1 - x[i]**2 + x[i]**2 / (2 + 4 * x[i]) + 0.7885 * np.e**(2.275 * 1j)
         expression = cp.ElementwiseKernel(
-        'complex128 x',
-        'complex128 z',
-        'z = x*x + .4 - .6*i;',
-        'expression')
-        
+            'complex128 x',
+            'complex128 z',
+            'z = x*x + .4 - .6*i;',
+            'expression')
+
         plot_julia_set(complex_expression, 100, 4000000, -2.133, 2.133, -1.2, 1.2, 'CMRmap', 'gpu')
-        # plt.show()
-        plt.savefig('juliaset41.png')
-        
+        plt.show()
+        # plt.savefig('juliaset45.png')
+        LOGGER.info(f'time taken: {time.perf_counter() - start_time}')
+
     def test_plot_julia_set_over_time(self):
-        for a in tqdm(np.linspace(0, 2*np.pi, 200)):
+        for a in tqdm(np.linspace(0, 2 * np.pi, 200)):
             @cuda.jit('void(complex128[:])')
             def complex_expression(x):
                 # i = cuda.grid(1)
                 # x[i] = x[i]**2 - 0.4 + 0.6j
                 start = cuda.grid(1)
                 stride = cuda.gridsize(1)
-                for i in range(start, x.shape[0], stride): 
-                    x[i] = 1 - x[i]**3 + x[i]**6/(2 + 4*x[i]) + 0.7885* np.e**(a*1j)
+                for i in range(start, x.shape[0], stride):
+                    x[i] = 1 - x[i]**3 + x[i]**6 / (2 + 4 * x[i]) + 0.7885 * np.e**(a * 1j)
             plot_julia_set(complex_expression, 100, 3000000, -2.133, 2.133, -1.2, 1.2, 'CMRmap', 'gpu')
             plt.savefig(f'pictures/juliasetovertime{len(os.listdir(os.path.join(os.getcwd(), "pictures")))}.png')
             plt.clf()
+
+    def test_plot_julia_set_over_time2(self):
+        start_time = time.perf_counter()
+        fig_list = []
+
+        for a in tqdm(np.linspace(0, 2 * np.pi, 200)):
+            @cuda.jit('void(complex128[:])')
+            def complex_expression(x):
+                # i = cuda.grid(1)
+                # x[i] = x[i]**2 - 0.4 + 0.6j
+                start = cuda.grid(1)
+                stride = cuda.gridsize(1)
+                for i in range(start, x.shape[0], stride):
+                    x[i] = 1 - x[i]**2 + x[i]**2 / (2 + 4 * x[i]) + 0.7885 * np.e**(a * 1j)
+
+            fig, cleaned_list, cleaned_divergence = plot_julia_set(complex_expression, 100, 4000000, -2.133, 2.133, -1.2, 1.2, 'CMRmap', 'gpu', fig_name=f'{a}')
+            LOGGER.info(f"size of fig: {sys.getsizeof(fig)}")
+            fig_list.append((fig, a))
         
+        # pool = multiprocessing.Pool(psutil.cpu_count(logical=False))
+        # pool.map(overtime_helper, fig_list, chunksize=2)
+        process_map(overtime_helper, fig_list, chunksize=1, max_workers=psutil.cpu_count(logical=False))
+        # plt.show()
+        # plt.savefig(f'pictures/juliaset{len(os.listdir(os.path.join(os.getcwd(), "pictures")))}.png')
+        LOGGER.info(f'time taken test_plot_julia_set_over_time2: {time.perf_counter() - start_time}')
+
+    def test_julia_set_plot2(self):
+        start_time = time.perf_counter()
+
+        def complex_expression2(x):
+            try:
+                return x**2 - 0.4 + 0.6j
+            except OverflowError:
+                return np.inf
+
+        @cuda.jit('void(complex128[:])')
+        def complex_expression(x):
+            # i = cuda.grid(1)
+            # x[i] = x[i]**2 - 0.4 + 0.6j
+            start = cuda.grid(1)
+            stride = cuda.gridsize(1)
+            for i in range(start, x.shape[0], stride):
+                x[i] = 2**x[i] - 0.7885 * np.e**(2.6 * 1j)
+        expression = cp.ElementwiseKernel(
+            'complex128 x',
+            'complex128 z',
+            'z = x*x + .4 - .6*i;',
+            'expression')
+
+        plot_julia_set(complex_expression, 100, 4000000, -2, 8.666, -5, 3, 'CMRmap', 'gpu')
+        # plt.show()
+        plt.savefig('juliaset46.png')
+        LOGGER.info(f'time taken: {time.perf_counter() - start_time}')
+
     def test_julia_set_root_plot(self):
         complex_expression = x**4 - .45 + 6j
         derivative_expression = diff(complex_expression, x)
         complex_expression = lambdify(x, complex_expression)
         derivative_expression = lambdify(x, derivative_expression)
-        
+
         plot_julia_root_set(complex_expression, derivative_expression, 100, 5000000, -1.5, 1.5, -1.5, 1.5, 'Set1')
-        
+
         plt.show()
         # plt.savefig('juliaset24.png')
-
 
     def test_complex_fixed_point(self):
         expression3 = z**2 - 1 + 1j
@@ -512,35 +570,36 @@ def plot_contour(x, y, z, resolution=50, contour_method='linear'):
     return aX, aY, aZ
 
 
-def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: int=20000, real_range_min: float=-1.0, real_range_max: float=1.0, imag_range_min: float=-1.0, imag_range_max: float=1.0, cmap='viridis', comp_method='cpu', image_width=19.2, image_height=10.8):
+def plot_julia_set(expression: callable, iteration_count: int = 100, seed_count: int = 20000, real_range_min: float = -1.0, real_range_max: float = 1.0,
+                   imag_range_min: float = -1.0, imag_range_max: float = 1.0, cmap='viridis', comp_method='cpu', image_width=19.2, image_height=10.8, fig_name='Julia set plot'):
     """ takes complex expression, iterates the expression with a random set of initial complex points
         and returns the times it was iterated before the value diverged.
-        removes values that have a large magnitude. plots the remaining points on a complex plane.
-
+        removes values that did not diverge. plots the remaining points on a complex plane
+        with a color matching the times needed for the modulus to go above 4.
+        This should be R^2 instead of 4 where R = escape radius; but its hard to code
 
     Args:
-        expression (callable): _description_
-        iteration_count (int): _description_
-        seed_count (int): _description_
-        real_range_min (float): _description_
-        real_range_max (float): _description_
-        imag_range_min (float): _description_
-        imag_range_max (float): _description_
+        expression (callable): julia set function
+        iteration_count (int): amount of times to iterate
+        seed_count (int): amount of points to iterate and plot
+        real_range_min (float): min range of real part of complex points
+        real_range_max (float): max range of real part of complex points
+        imag_range_min (float): min range of imag part of complex points
+        imag_range_max (float): max range of imag part of complex points
 
-    Returns:
-        _type_: _description_
     """
+    start_time = time.perf_counter()
     if comp_method == 'cpu':
         complex_function = np.vectorize(expression)
     elif comp_method == 'gpu':
         complex_function = expression
-    
+
     real_random_set = np.array(random.sample(sorted(np.linspace(real_range_min, real_range_max, 20000000)), seed_count))
     imag_random_set = np.array(random.sample(sorted(np.linspace(imag_range_min, imag_range_max, 20000000)), seed_count))
     complex_random_set = real_random_set + imag_random_set * 1j
 
     divergence = iterations_till_divergence(complex_function, np.array(complex_random_set), iteration_count, comp_method)
-    
+
     def filter_helper(complex_value, divergence):
         if divergence < iteration_count:
             return complex_value
@@ -560,15 +619,22 @@ def plot_julia_set(expression: callable, iteration_count: int=100, seed_count: i
             cleaned_list.append(filtered_list[index])
     cleaned_list = np.array(cleaned_list)
     cleaned_divergence = np.array(cleaned_divergence)
-    
-    fig, ax = plt.subplots(num=f'Julia set plot')
+    LOGGER.info(f"size of cleaned_divergence: {sys.getsizeof(cleaned_divergence)}")
+    LOGGER.info(f"size of cleaned_list: {sys.getsizeof(cleaned_list)}")
+
+    fig, ax = plt.subplots(num=fig_name)
     fig.set_size_inches(image_width, image_height)
     ax.axis('equal')
     plt.tight_layout()
+    start_time2 = time.perf_counter()
     ax.scatter(cleaned_list.real, cleaned_list.imag, c=cleaned_divergence, s=.1, cmap=cmap)
-    
-def plot_julia_root_set(expression: callable, derivative: callable, iteration_count: int=100, seed_count: int=20000, real_range_min: float=-1.0, real_range_max: float=1.0, imag_range_min: float=-1.0, imag_range_max: float=1.0, cmap='viridis'):
-    """ takes complex expression, iterates the expression with the newtons method 
+    LOGGER.info(f'time taken scatter: {time.perf_counter() - start_time2}')
+    LOGGER.info(f'time taken plot_julia_set: {time.perf_counter() - start_time}')
+    return fig, cleaned_list, cleaned_divergence
+
+
+def plot_julia_root_set(expression: callable, derivative: callable, iteration_count: int = 100, seed_count: int = 20000, real_range_min: float = -1.0, real_range_max: float = 1.0, imag_range_min: float = -1.0, imag_range_max: float = 1.0, cmap='viridis'):
+    """ takes complex expression, iterates the expression with the newtons method
         over a random set of initial complex points
         and returns the root at each point.
         removes values that have a large magnitude. plots the remaining points on a complex plane.
@@ -585,21 +651,21 @@ def plot_julia_root_set(expression: callable, derivative: callable, iteration_co
     Returns:
         _type_: _description_
     """
-    
+
     real_random_set = np.array(random.sample(sorted(np.linspace(real_range_min, real_range_max, 20000000)), seed_count))
     imag_random_set = np.array(random.sample(sorted(np.linspace(imag_range_min, imag_range_max, 20000000)), seed_count))
     complex_random_set = real_random_set + imag_random_set * 1j
 
     root_list = find_roots(expression, derivative, complex_random_set, iteration_count)
     LOGGER.info(root_list[:20])
-    
+
     # cleaned_roots = []
     # isnan_list = np.isnan(root_list)
     # for index in range(len(root_list)):
     #     if not isnan_list[index]:
     #         cleaned_roots.append(root_list[index])
     # cleaned_roots = np.array(cleaned_roots)
-    
+
     fig, ax = plt.subplots(num=f'Julia set root plot')
     fig.set_size_inches(20, 20)
     plt.tight_layout()
@@ -607,7 +673,7 @@ def plot_julia_root_set(expression: callable, derivative: callable, iteration_co
     ax.scatter(complex_random_set.real, complex_random_set.imag, c=root_list.imag, s=.1, cmap=cmap)
 
 
-def find_roots(iterating_function: callable, derivative: callable,  initial_values: np.ndarray, iteration_count=1000) -> list:
+def find_roots(iterating_function: callable, derivative: callable, initial_values: np.ndarray, iteration_count=1000) -> list:
     """ finds roots with newtons method
 
     Args:
@@ -619,7 +685,7 @@ def find_roots(iterating_function: callable, derivative: callable,  initial_valu
         list: list of when each value diverges
     """
     root_list = initial_values
-    
+
     for i in tqdm(range(iteration_count)):
         root_list = root_list - (iterating_function(root_list) / derivative(root_list))
     return root_list
@@ -630,10 +696,16 @@ def main():
                         format=LOG_FORMAT, filename='log_file_test.log')
     logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
     logging.getLogger('numba.core').setLevel(logging.WARNING)
+    logging.getLogger('numba.cuda.cudadrv.driver').setLevel(logging.WARNING)
+
     test_client = DynamicalTest()
-    test_client.test_plot_julia_set_over_time()
+    test_client.test_plot_julia_set_over_time2()
 
 
+def overtime_helper(fig):
+    figure, number = fig
+    figure.savefig(f'pictures/new/juliaset{number}.png')
+    
 if __name__ == '__main__':
     multiprocessing.freeze_support()
     main()

@@ -131,3 +131,5 @@ dmypy.json
 *.png
 pictures/png_to_gif.py
 pictures/julia_over_time.gif
+pictures.zip
+code.zip

@@ -105,7 +105,7 @@ def iterate_array_expression(iterating_function: callable, initial_values: np.nd
 
 def iterations_till_divergence(expression: callable, initial_values: np.ndarray, iteration_count=1000, comp_method='cpu') -> list:
     """ iterates over a function with the initial value and returns
-        a list of when each value diverges
+        a list of when the modulus of each complex value goes above 4
 
     Args:
         expression (ufunc): function of x to be iterated
@@ -135,7 +135,7 @@ def iterations_till_divergence(expression: callable, initial_values: np.ndarray,
         start = cuda.grid(1)
         stride = cuda.gridsize(1)
         for i in range(start, complex_value.shape[0], stride): 
-            if complex_value[i].real**2 + complex_value[i].imag**2 < 4:
+            if complex_value[i].real**2 + complex_value[i].imag**2 < 2:
                 divergence[i] = divergence[i] + 1
     
     helper_func3 = cp.ElementwiseKernel(
@@ -182,7 +182,7 @@ def iterations_till_divergence(expression: callable, initial_values: np.ndarray,
     if comp_method == 'gpu':
         iterating_values_d = cuda.to_device(iterating_values_h)
         divergence_d = cuda.to_device(divergence_h)
-    for iteration in range(iteration_count):
+    for iteration in tqdm(range(iteration_count)):
         if comp_method == 'gpu':
             expression[griddim, blockdim](iterating_values_d)
             helper_func5[griddim, blockdim](iterating_values_d, divergence_d)
