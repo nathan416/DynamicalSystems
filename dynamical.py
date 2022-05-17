@@ -136,13 +136,13 @@ def iterations_till_divergence(expression: callable, initial_values: np.ndarray,
     if comp_method == 'gpu':
         iterating_values_d = cuda.to_device(iterating_values_h)
         divergence_d = cuda.to_device(divergence_h)
-    for iteration in tqdm(range(iteration_count)):
+    for iteration in range(iteration_count):
         if comp_method == 'gpu':
             expression[griddim, blockdim](iterating_values_d, a)
             helper_func5[griddim, blockdim](iterating_values_d, divergence_d)
         else:
             iterating_values_h = expression(iterating_values_h)
-            divergence_h = helper(iterating_values_h, divergence_h)
+            # divergence_h = helper(iterating_values_h, divergence_h)
         # iterating_values = helper2(iterating_values)
     if comp_method == 'gpu':
         divergence_h = divergence_d.copy_to_host()
@@ -761,7 +761,7 @@ def newtons_method(expression: Basic, initial_value: float, iterations: int) -> 
     return intermediate_value
 
 def plot_julia_set(expression: callable, a, iteration_count: int = 100, seed_count: int = 20000, real_range_min: float = -1.0, real_range_max: float = 1.0,
-                   imag_range_min: float = -1.0, imag_range_max: float = 1.0, cmap='viridis', comp_method='cpu', image_width=19.2, image_height=10.8, fig_name='Julia set plot', is_plotted=True):
+                   imag_range_min: float = -1.0, imag_range_max: float = 1.0, cmap='viridis', comp_method='cpu', image_width=19.2, image_height=10.8, fig_name='Julia set plot', is_plotted=True, complex_random_set=None):
     """ takes complex expression, iterates the expression with a random set of initial complex points
         and returns the times it was iterated before the value diverged.
         removes values that did not diverge. plots the remaining points on a complex plane
@@ -783,10 +783,11 @@ def plot_julia_set(expression: callable, a, iteration_count: int = 100, seed_cou
         complex_function = np.vectorize(expression)
     elif comp_method == 'gpu':
         complex_function = expression
-
-    real_random_set = np.array(random.sample(sorted(np.linspace(real_range_min, real_range_max, 20000000)), seed_count))
-    imag_random_set = np.array(random.sample(sorted(np.linspace(imag_range_min, imag_range_max, 20000000)), seed_count))
-    complex_random_set = real_random_set + imag_random_set * 1j
+    
+    if complex_random_set is None:
+        real_random_set = np.array(random.sample(sorted(np.linspace(real_range_min, real_range_max, 20000000)), seed_count))
+        imag_random_set = np.array(random.sample(sorted(np.linspace(imag_range_min, imag_range_max, 20000000)), seed_count))
+        complex_random_set = real_random_set + imag_random_set * 1j
 
     divergence = iterations_till_divergence(complex_function, np.array(complex_random_set, dtype=np.complex64), a, iteration_count, comp_method)
 
@@ -816,14 +817,14 @@ def plot_julia_set(expression: callable, a, iteration_count: int = 100, seed_cou
     LOGGER.info(f"size of cleaned_divergence: {sys.getsizeof(cleaned_divergence)}")
     LOGGER.info(f"size of cleaned_list: {sys.getsizeof(cleaned_list)}")
 
-    fig, ax = plt.subplots(num=fig_name)
     if(is_plotted):
+        fig, ax = plt.subplots(num=fig_name)
         fig.set_size_inches(image_width, image_height)
         ax.axis('equal')
         plt.tight_layout()
         ax.scatter(cleaned_list.real, cleaned_list.imag, c=cleaned_divergence, s=.1, cmap=cmap)
     LOGGER.info(f'time taken plot_julia_set: {time.perf_counter() - start_time}')
-    return fig, cleaned_list, cleaned_divergence
+    return cleaned_list, cleaned_divergence
 
 
 def plot_julia_root_set(expression: callable, derivative: callable, iteration_count: int = 100, seed_count: int = 20000, real_range_min: float = -1.0, real_range_max: float = 1.0, imag_range_min: float = -1.0, imag_range_max: float = 1.0, cmap='viridis'):

@@ -489,7 +489,7 @@ class DynamicalTest(unittest.TestCase):
                 x[i] = 1 - x[i]**2 + x[i]**2 / (2 + 4 * x[i]) + 0.7885 * np.e**(a * 1j)
 
         for a in tqdm(np.linspace(0, 2 * np.pi, 200)):
-            fig, cleaned_list, cleaned_divergence = plot_julia_set(complex_expression, a, 100, 4000000, -2.133, 2.133, -1.2, 1.2, 'CMRmap', 'gpu', fig_name=f'{a}', is_plotted=False)
+            cleaned_list, cleaned_divergence = plot_julia_set(complex_expression, a, 100, 4000000, -2.133, 2.133, -1.2, 1.2, 'CMRmap', 'gpu', fig_name=f'{a}', is_plotted=False)
             fig_list.append((cleaned_list, cleaned_divergence, a))
         # pool = multiprocessing.Pool(psutil.cpu_count(logical=False))
         # pool.map(overtime_helper, fig_list, chunksize=2)
