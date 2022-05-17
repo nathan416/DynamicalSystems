@@ -127,9 +127,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-
+*.gif
 *.png
 pictures/png_to_gif.py
 pictures/julia_over_time.gif
 pictures.zip
 code.zip
+resize.py

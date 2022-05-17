@@ -51,21 +51,21 @@ REAL_RANDOM_SET = np.array(random.sample(sorted(np.linspace(REAL_RANGE_MIN, REAL
 IMAG_RANDOM_SET = np.array(random.sample(sorted(np.linspace(IMAG_RANGE_MIN, IMAG_RANGE_MAX, 20000000)), SEED_COUNT))
 COMPLEX_RANDOM_SET = np.array((REAL_RANDOM_SET + IMAG_RANDOM_SET * 1j), dtype=np.complex64)
 
+@cuda.jit('void(complex64[:], float32)')
+def complex_expression(x, a):
+    # i = cuda.grid(1)
+    # x[i] = x[i]**2 - 0.4 + 0.6j
+    start = cuda.grid(1)
+    stride = cuda.gridsize(1)
+    for i in range(start, x.shape[0], stride):
+        x[i] = 1 - x[i]**2 + x[i]**2 / (2 + 4 * x[i]) + 0.7885 * np.e**(a * 1j)
+
 def test_plot_julia_set_over_time2():
     start_time = time.perf_counter()
     fig_list = []
 
-    @cuda.jit('void(complex64[:], float32)')
-    def complex_expression(x, a):
-        # i = cuda.grid(1)
-        # x[i] = x[i]**2 - 0.4 + 0.6j
-        start = cuda.grid(1)
-        stride = cuda.gridsize(1)
-        for i in range(start, x.shape[0], stride):
-            x[i] = 1 - x[i]**2 + x[i]**2 / (2 + 4 * x[i]) + 0.7885 * np.e**(a * 1j)
-
     for a in tqdm(np.linspace(4.073019621237019, 4.104593416750483, 200)):
-        cleaned_list, cleaned_divergence = plot_julia_set(complex_expression, a, 100, SEED_COUNT, REAL_RANGE_MIN, REAL_RANGE_MAX, IMAG_RANGE_MIN, IMAG_RANGE_MAX, 'CMRmap', 'gpu', fig_name=f'{a}', is_plotted=False, complex_random_set=COMPLEX_RANDOM_SET)
+        cleaned_list, cleaned_divergence = plot_julia_set(complex_expression, a, 150, SEED_COUNT, REAL_RANGE_MIN, REAL_RANGE_MAX, IMAG_RANGE_MIN, IMAG_RANGE_MAX, 'CMRmap', 'gpu', fig_name=f'{a}', is_plotted=False, complex_random_set=COMPLEX_RANDOM_SET)
         fig_list.append((cleaned_list, cleaned_divergence, a))
     # pool = multiprocessing.Pool(psutil.cpu_count(logical=False))
     # pool.map(overtime_helper, fig_list, chunksize=2)
@@ -83,7 +83,7 @@ def overtime_helper(zip):
     ax.axis('equal')
     plt.tight_layout()
     ax.scatter(cleaned_list.real, cleaned_list.imag, c=cleaned_divergence, s=.1, cmap='CMRmap')
-    figure.savefig(f'pictures/new/juliaset{a}.png')
+    figure.savefig(f'pictures/new/{int(a * 100000)}.png')
     figure.clf()
     
 def main():
