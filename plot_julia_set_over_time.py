@@ -1,7 +1,7 @@
-"""Midterm Project
+"""Julia set gif
     Class: CPSC 455
     By: Nathan Flack
-    Version: 1.6
+    Version: 1.0
 """
 from __future__ import division
 
