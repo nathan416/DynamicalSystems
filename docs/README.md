@@ -6,7 +6,7 @@ Final Project
 
 Complex Iterative Map
 
-![](./media/image1.png){width="6.5in" height="5.135416666666667in"}
+![](./media/image1.png)
 
 Consider the Julia set given in Figure (1). Take the mapping z~n~+1 =
 z^2^~n~ + c where c = −0.5 + 0.3i
@@ -104,21 +104,19 @@ Z~4~ = 0.30024259022012 - 0.624810533843827i,
 
 \(a\) c = 0 + 0i,
 
-![](./media/image2.png){width="6.5in" height="6.5in"}
+![](./media/image2.png)
 
 \(b\) c = −0.5 + 0i,
 
-![](./media/image3.png){width="6.5in" height="6.5in"}
+![](./media/image3.png)
 
 \(c\) −0.7 + 0i,
 
-![](./media/image4.png){width="6.489583333333333in"
-height="4.333333333333333in"}
+![](./media/image4.png)
 
 \(d\) −2 + 0i.
 
-![](./media/image5.png){width="6.479166666666667in"
-height="2.4270833333333335in"}
+![](./media/image5.png)
 
 4\. Compute the fixed points of period one for
 $z_{n + 1} = 2 + \frac{ze^{i{|z|}^{2}}}{10}$
@@ -142,53 +140,46 @@ $$z = \frac{1}{2}( \pm \sqrt{4c - 3} + 1)$$
 
 Additional plots: z~n~+1 = z^2^~n~ + c
 
-![](./media/image6.png){width="6.5in" height="6.5in"}
+![](./media/image6.png)
 
 $$z_{n + 1} = 2 + \frac{ze^{i{|z|}^{2}}}{10}$$
 
-![](./media/image7.png){width="6.489583333333333in"
-height="6.489583333333333in"}
+![](./media/image7.png)
 
 $$z_{n + 1} = c - z_{n}^{2}$$
 
-![](./media/image8.png){width="6.489583333333333in"
-height="6.489583333333333in"}
+![](./media/image8.png)
 
 z~n~+1 = z^2^~n~ + c
 
-![](./media/image9.png){width="6.5in" height="6.5in"}
+![](./media/image9.png)
 
 $$z_{n + 1} = z_{n}^{3} + c$$
 
-![](./media/image10.png){width="6.5in" height="6.5in"}
+![](./media/image10.png)
 
 $$z_{n + 1} = z_{n}^{4} + c$$
 
-![](./media/image11.png){width="6.5in" height="6.5in"}
+![](./media/image11.png)
 
 $$z_{n + 1} = z_{n}^{3} + c$$
 
-![](./media/image12.png){width="6.5in" height="6.5in"}
+![](./media/image12.png)
 
 $$z_{n + 1} = z_{n}^{6} + c$$
 
-![](./media/image13.png){width="6.489583333333333in"
-height="3.6458333333333335in"}
+![](./media/image13.png)
 
-![](./media/image14.png){width="6.489583333333333in"
-height="3.6458333333333335in"}
+![](./media/image14.png)
 
-$z_{n + 1} = \frac{1 - \frac{z_{n}^{3}}{6}}{{{(z}_{n -}\frac{z_{n}^{2}}{2})}^{2}}$![](./media/image15.png){width="6.489583333333333in"
-height="3.6458333333333335in"}
+$z_{n + 1} = \frac{1 - \frac{z_{n}^{3}}{6}}{{{(z}_{n -}\frac{z_{n}^{2}}{2})}^{2}}$![](./media/image15.png)
 
-![](./media/image16.png){width="6.489583333333333in"
-height="3.6458333333333335in"}
+![](./media/image16.png)
 
 $z_{n + 1} = 1 - z_{n}^{2} + \frac{z_{n}^{5}}{2 + 4z_{n}}$ + c
 
-![](./media/image17.png){width="6.489583333333333in"
-height="3.6458333333333335in"}![](./media/image18.png){width="6.489583333333333in"
-height="3.6458333333333335in"}
+![](./media/image17.png)
+![](./media/image18.png)
 
 $$z_{n + 1} = 1 - z_{n}^{3} + \frac{z_{n}^{6}}{2 + 4z_{n}} + 0.7885\ e^{ia}\ \text{for\ 0} < a\  < 2\pi$$
 
