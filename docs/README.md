@@ -172,7 +172,9 @@ $$z_{n + 1} = z_{n}^{6} + c$$
 
 ![](./media/image14.png)
 
-$z_{n + 1} = \frac{1 - \frac{z_{n}^{3}}{6}}{{{(z}_{n -}\frac{z_{n}^{2}}{2})}^{2}}$![](./media/image15.png)
+$z_{n + 1} = \frac{1 - \frac{z_{n}^{3}}{6}}{{{(z}_{n -}\frac{z_{n}^{2}}{2})}^{2}}$
+
+![](./media/image15.png)
 
 ![](./media/image16.png)
 
