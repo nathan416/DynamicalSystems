@@ -195,5 +195,6 @@ $$z_{n + 1} = 1 - z_{n}^{3} + \frac{z_{n}^{6}}{2 + 4z_{n}} + 0.7885\ e^{ia}\ \te
 ## plot_julia_set
 ![img](https://i.imgur.com/kxPxZgB.gif)
 ![img](https://i.imgur.com/61PyTUJ.gif)
+![img](https://i.imgur.com/uaMdww4.png)
 
 This is an example of the graph created by plot_julia_set
