@@ -224,11 +224,12 @@ def save_julia_set_image(file_name: str, expression: str, real_range_min: float 
                     divergence[i, j] = divergence_tracker(x[i, j], divergence[i, j])
 
     img = plotting_helper(calculate_julia_set, a, iteration_count, real_range_min, real_range_max, imag_range_min, imag_range_max, image_width, image_height, label_image, expression, cmap)
-    background = Image.new("RGB", img.size, (255, 255, 255))
-    background.paste(img, mask=img.split()[3]) # 3 is the alpha channel
-    
-    background.save(fp=file_name, format='PNG')
+    return img
 
+def save_img_to_file(image, filename):
+    # background = Image.new("RGB", image.size, (255, 255, 255))
+    # background.paste(image, mask=image.split()[3]) # 3 is the alpha channel
+    image.save(fp=filename, format='PNG')
 
 def plotting_helper(expression: callable, a, iteration_count: int = 100, real_range_min: float = -2.31, real_range_max: float = 2.31, imag_range_min: float = -1.3, imag_range_max: float = 1.3, image_width=1920, image_height=1080, label_image=False, function_string='', cmap='gnuplot'):
     norm = matplotlib.colors.Normalize(vmin=0, vmax=iteration_count+1)
@@ -260,16 +261,16 @@ def is_safe(inp_string):
     return True
 
 def main():
-    logging.basicConfig(level=logging.DEBUG,
-                        format=LOG_FORMAT, filename='log_file_test.log')
-    logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
-    logging.getLogger('numba.core').setLevel(logging.WARNING)
-    logging.getLogger('numba.cuda.cudadrv.driver').setLevel(logging.WARNING)
+    # logging.basicConfig(level=logging.DEBUG,
+    #                     format=LOG_FORMAT, filename='log_file_test.log')
+    # logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+    # logging.getLogger('numba.core').setLevel(logging.WARNING)
+    # logging.getLogger('numba.cuda.cudadrv.driver').setLevel(logging.WARNING)
 
     
-    strfunc = 'x**4 + x**3 / (x - 1) + x**2 / (x**3 + 4 * x**2 + 5) + 0.377767 * sin(.5) + 0.368646 * 1j * sin(2.6) - 0.368646 * 1j + 0.377767'
+    # strfunc = 'x**4 + x**3 / (x - 1) + x**2 / (x**3 + 4 * x**2 + 5) + 0.377767 * sin(.5) + 0.368646 * 1j * sin(2.6) - 0.368646 * 1j + 0.377767'
     # cProfile.run(f'save_julia_set_image(FILENAME, \'{strfunc}\', REAL_RANGE_MIN, REAL_RANGE_MAX, IMAG_RANGE_MIN, IMAG_RANGE_MAX, IMAGE_WIDTH, IMAGE_HEIGHT, True)', 'log_file_test.log') 
-    save_julia_set_image(f'pictures/sequence/julia{len(os.listdir(os.path.join(os.getcwd(), "pictures/sequence")))+1}.png', strfunc, REAL_RANGE_MIN, REAL_RANGE_MAX, IMAG_RANGE_MIN, IMAG_RANGE_MAX, IMAGE_WIDTH, IMAGE_HEIGHT, True, iteration_count= ITERATIONS,cmap='hsv')
+    # save_julia_set_image(f'pictures/sequence/julia{len(os.listdir(os.path.join(os.getcwd(), "pictures/sequence")))+1}.png', strfunc, REAL_RANGE_MIN, REAL_RANGE_MAX, IMAG_RANGE_MIN, IMAG_RANGE_MAX, IMAGE_WIDTH, IMAGE_HEIGHT, True, iteration_count= ITERATIONS,cmap='hsv')
     # p = pstats.Stats('log_file_test.log')
     # p.sort_stats('cumulative').print_stats(20)
 
