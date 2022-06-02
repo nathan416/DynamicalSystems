@@ -56,7 +56,7 @@ x, y, z, t, a = symbols('x y z t a')
 # compatible color maps can be found at https://matplotlib.org/3.5.0/tutorials/colors/colormaps.html
 
 class JuliaSetGenerator:
-    def __init__(self, file_name: str, expression: str, real_range_min: float = -2.31, real_range_max: float = 2.31, imag_range_min: float = -1.3, imag_range_max: float = 1.3, image_width=1920, image_height=1080, label_image=False, iteration_count=10, divergence_limit = 1000):
+    def __init__(self, file_name: str, expression: str, real_range_min: float = -2.31, real_range_max: float = 2.31, imag_range_min: float = -1.3, imag_range_max: float = 1.3, image_width=1920, image_height=1080, label_image=False, iteration_count=10, cmap='gnuplot'):
         self.filename = file_name
         self.expression = expression
         self.real_range_min = real_range_min
@@ -67,8 +67,8 @@ class JuliaSetGenerator:
         self.image_height = image_height
         self.label_image = label_image
         self.iteration_count = iteration_count
-        self.divergence_limit = divergence_limit
-        self.vect_divergence_tracker = np.vectorize(self.divergence_tracker)
+        self.cmap = cmap
+        self.vect_divergence_tracker = np.vectorize(divergence_tracker)
         
         try:
             subprocess.check_output('nvidia-smi')
@@ -79,22 +79,6 @@ class JuliaSetGenerator:
             # print('No Nvidia GPU in system!')
             self.has_gpu = False
     
-    def divergence_tracker(x, divergence):
-        """
-        cuda device function
-        checks whether the x value is diverging and increase divergence by 1 if the x value is not diverging
-
-        Args:
-            x (complex64): value to check
-            divergence (int32): current value in divergence
-
-        Returns:
-            int32: new divergence value
-        """
-        if x.real**2 + x.imag**2 < DIVERGENCE_LIMIT:
-            return divergence + 1
-        return divergence
-    
     def save_julia_set_image(self):
         if(not is_safe(self.expression)):
             raise ValueError('invalid expression')
@@ -103,7 +87,7 @@ class JuliaSetGenerator:
         math_lambda_func = lambdify((x,), sympy_func, 'math')
         if(self.has_gpu):
             cuda_func = cuda.jit('void(complex64)', device=True)(math_lambda_func)
-            cuda_divergence_tracker = cuda.jit('void(complex64, int32)', device=True)(self.divergence_tracker)
+            cuda_divergence_tracker = cuda.jit('void(complex64, int32)', device=True)(divergence_tracker)
             @cuda.jit('void(complex64[:,:], int32[:,:], int32)')
             def cuda_calculate_julia_set(x, divergence, iter):
                 xstart, ystart = cuda.grid(2)
@@ -116,9 +100,12 @@ class JuliaSetGenerator:
                             divergence[i, j] = cuda_divergence_tracker(x[i, j], divergence[i, j])
             img = self.plotting_helper(cuda_calculate_julia_set)
         else:       
-            def calculate_julia_set(x):
-                if x.real**2 + x.imag**2 < DIVERGENCE_LIMIT:
-                    x = math_lambda_func(x)
+            def calculate_julia_set(x, divergence):
+                for iteration in range(self.iteration_count):
+                    if x.real**2 + x.imag**2 < DIVERGENCE_LIMIT:
+                        divergence = divergence + 1
+                        x = math_lambda_func(x)
+                return divergence
             vect_calculate_julia_set = np.vectorize(calculate_julia_set)        
             
             img = self.plotting_helper(vect_calculate_julia_set)
@@ -173,8 +160,8 @@ class JuliaSetGenerator:
 
         if(self.has_gpu):
             blockdim = (16, 16)
-            griddimx = math.ceil(IMAGE_WIDTH / blockdim[0])
-            griddimy = math.ceil(IMAGE_HEIGHT / blockdim[1])
+            griddimx = math.ceil(self.image_width / blockdim[0])
+            griddimy = math.ceil(self.image_height / blockdim[1])
             griddim = (griddimx, griddimy)
 
             iterating_values_d = cuda.to_device(initial_values)
@@ -183,12 +170,25 @@ class JuliaSetGenerator:
             expression[griddim, blockdim](iterating_values_d, divergence_d, self.iteration_count)
             divergence_h = divergence_d.copy_to_host()
         else:
-            for iteration in range(self.iteration_count):
-                initial_values = expression(initial_values, divergence_h)
-                divergence_h = self.vect_divergence_tracker(initial_values, divergence_h)
-
+            divergence_h = expression(initial_values, divergence_h)
         # LOGGER.info(f'time taken iterations_till_divergence_image: {time.perf_counter() - start_time}')
         return divergence_h
+
+def divergence_tracker(x: np.complex64, divergence: np.int32):
+    """
+    cuda device function
+    checks whether the x value is diverging and increase divergence by 1 if the x value is not diverging
+
+    Args:
+        x (complex64): value to check
+        divergence (int32): current value in divergence
+
+    Returns:
+        int32: new divergence value
+    """
+    if x.real**2 + x.imag**2 < DIVERGENCE_LIMIT:
+        return divergence + 1
+    return divergence
             
 @cuda.jit('void(complex64, float32)', device=True)
 def iterating_function(x: np.complex64, a: np.float32):
